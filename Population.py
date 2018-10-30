@@ -8,32 +8,122 @@ import os.path
 import time
 import curses
 
-
-
 class population():
 
-    #GenomeList = []
     SpeciesList = []
-    CurrentInnovationList = []
-    GlobalInnovation = 0
+    InnovationList = []
     GlobalSpecies = 0
     GenomeID = 0
 
-    def __init__(self, size,mutateWeightRate=0.9,mutateNodeRate=0.05, mutateConnectionRate=0.05, c1=1, c2=1, c3=1, delta=2, initial=True):
+    def __init__(self, size,mutateWeightRate=0.7,mutateNodeRate=0.1, mutateConnectionRate=0.1, removeConnectionRate=0.03, c1=1, c2=1, c3=1, delta=2):
         self.mutateWeightRate = mutateWeightRate
         self.mutateNodeRate = mutateNodeRate
         self.mutateConnectionRate = mutateConnectionRate
+        self.removeConnectionRate = removeConnectionRate
         self.c1 = c1
         self.c2 = c2
         self.c3 = c3
         self.delta = delta
         self.populationSize = size
-        if(initial):
-            self.addInitialGenomes(size)
 
     def make_env(self, game_env):
         self.env = gym.make(game_env)
         self.env.reset()
+
+    def closeGame(self):
+        self.env.close()
+
+    def findSpecies(self,genome1):
+        for species in self.SpeciesList:
+            if(genome1 in species.genomeList):
+                return species.speciesType
+        print("Genome doesn't belong to any species")
+
+    def drawPop(self, gen=0):
+
+        for s in self.SpeciesList:
+            for g in s.genomeList:
+                drawnet = 'Gen_' + str(gen) + '/Species_' + str(s.speciesType) + '/genome_' + str(g.id)
+                g.draw_net(filename=drawnet)
+
+    def printGenome(self, genome=None):
+
+        if (genome):
+            print('\nid ', genome.id, ' fitness ', genome.fitness)
+            print([(i.inNode, i.outNode) for i in genome.ConnectionList])
+            print([(i.id) for i in genome.NodeList], '\n')
+        else:
+            for s in self.SpeciesList:
+                for g in s.genomeList:
+                    print('id ', g.id, ' fitness ', g.fitness)
+                    print([(i.inNode, i.outNode, i.enabled) for i in g.ConnectionList])
+                    print([(i.id) for i in g.NodeList])
+
+    def saveState(self, generation, innovationFile='Innovation.obj', generationFile='Generation.txt', PopulationFile='Population.obj'):
+        innovationFile = 'Gen_' + str(generation) + '/'  + innovationFile
+        generationFile = 'Gen_' + str(generation) + '/'  + generationFile
+        PopulationFile ='Gen_' + str(generation) + '/'  + PopulationFile
+
+        os.makedirs(os.path.dirname(innovationFile), exist_ok=True)
+        os.makedirs(os.path.dirname(generationFile), exist_ok=True)
+        os.makedirs(os.path.dirname(PopulationFile), exist_ok=True)
+        # write_innovation = open(innovationFile, 'wb')
+        # write_generation = open(generationFile, 'w')
+        # write_population = open(PopulationFile, 'wb')
+
+        with open(innovationFile, "wb") as writeInnovation, open(generationFile, "w") as writeGeneration, open(PopulationFile, 'wb') as writePopulation:
+            pickle.dump(self.InnovationList, writeInnovation)
+            pickle.dump(self.SpeciesList, writePopulation)
+            a_string = str(generation) + ':' + str(self.GlobalSpecies) + ':' + str(self.GenomeID)
+            writeGeneration.write(a_string)
+            writeGeneration.close()
+
+    def loadState(self, innovationFile='Innovation.obj', generationFile='Generation.txt', PopulationFile='Population.obj'):
+        initial = False
+
+        print('Loading Innovation File: ')
+        try:
+            read_innovation = open(innovationFile, 'rb')
+
+            if (os.stat(innovationFile).st_size > 0):
+                self.InnovationList = pickle.load(read_innovation)
+            else:
+                print('Empty Innovation File')
+                initial = True
+        except FileNotFoundError:
+            print('Innovation File does not Exist')
+            initial = True
+
+        print('Loading Population File: ')
+        try:
+            read_population = open(PopulationFile, 'rb')
+            if (os.stat(PopulationFile).st_size > 0):
+                self.SpeciesList = pickle.load(read_population)
+            else:
+                print('Empty Population File')
+                initial = True
+        except FileNotFoundError:
+            print('Population File does not Exist')
+            initial = True
+
+            print('Loading Generation File: ')
+        try:
+            write_generation = open(generationFile, 'r')
+            if (os.stat(generationFile).st_size > 0):
+                a_string = write_generation.read().split(':')
+                gen = int(a_string[0])
+                self.GlobalSpecies = int(a_string[1])
+                self.GenomeID = int(a_string[2])
+            else:
+                print('Empty Generation File')
+                gen = 0
+                initial = True
+        except FileNotFoundError:
+            print('Generation File does not Exist')
+            gen = 0
+            initial = True
+
+        return gen, initial
 
     def countGenes(self, genome1, genome2):
         excess = 0
@@ -52,7 +142,7 @@ class population():
         for connection2 in genome2.ConnectionList:
             innovation2.append(connection2.innovation)
 
-        if(len(genome1.ConnectionList) < 50 and len(genome2.ConnectionList) < 50):
+        if(len(genome1.ConnectionList) < 40 and len(genome2.ConnectionList) < 40):
             numGenes = 1
         elif(len(genome1.ConnectionList) >= len(genome2.ConnectionList)):
             numGenes = len(genome1.ConnectionList)
@@ -61,7 +151,6 @@ class population():
 
         innovation1 = sorted(innovation1)
         innovation2 = sorted(innovation2)
-
         max1 = innovation1[len(innovation1)-1]
         max2 = innovation2[len(innovation2)-1]
         diff1 = list(set(innovation1) - set(innovation2))
@@ -73,11 +162,6 @@ class population():
 
         return excess, disjoint, weights, numGenes
 
-    def makeSpeciesMascot(self):
-        for a_species in self.SpeciesList:
-            if(len(a_species.genomeList) > 0):
-                a_species.mascot = a_species.genomeList[np.random.randint(0,len(a_species.genomeList))]
-
     def putSpecies(self, genome1, minDistance=None):
         #Constants N are 1 for smaller populations of 20
         if(minDistance == None):
@@ -86,56 +170,46 @@ class population():
 
         for a_species in self.SpeciesList:
             excess, disjoint, weights, numGenes = self.countGenes(genome1, a_species.mascot)
-            minDelta = (self.c1 * excess + self.c2 * disjoint) + self.c3 * weights
 
-            print(minDelta, ' E: ', excess, 'D:', disjoint, ' w: ', weights,' N: ', numGenes, ' Coefficent ', self.c1, self.c2, self.c3)
-
-            if (minDelta < minDistance):
+            minDelta = (self.c1 * excess + self.c2 * disjoint)/numGenes + self.c3 * weights
+            #print('ID: ', genome1.id,  ' compared to: ', a_species.mascot.id, ' ', abs(minDelta), ' E: ', excess, 'D:', disjoint, ' w: ', weights,' N: ', numGenes)
+            if (abs(minDelta) < minDistance):
                 a_species.addGenome(genome1)
-                #print(f'The genome belongs to species: {a_species.speciesType}')
+                #print(f'The genome {genome1.id} belongs to species: {a_species.speciesType}')
                 sameSpecies = True
                 break
 
         if(not sameSpecies):
-            totalAdjustedfitness = genome1.fitness
-            newSpecies = Species(self.GlobalSpecies+1,genome1,genome1, totalAdjustedfitness)
-            print(f'Adding new species: {newSpecies.speciesType}')
+            newSpecies = Species(self.GlobalSpecies+1,genome1,genome1)
+            print(f'Adding new species: {newSpecies.speciesType} ID: {genome1.id}')
             self.SpeciesList.append(newSpecies)
             self.GlobalSpecies += 1
 
-    def findSpecies(self,genome1):
-        for species in self.SpeciesList:
-            if(genome1 in species.genomeList):
-                return species.speciesType
-        print("Genome doesn't belong to any species")
-
     def getFitness(self, a_genome, renderGame=False):
-        self.make_env('Pong-ram-v0')
+        initial_score = 50
         done = False
         ts = 0
         observations = []
         state = []
         choices = []
-        outComes = []
-        score = 50
+        score = initial_score
         phenotype = a_genome.buildNet()
-
+        self.make_env('Pong-ramDeterministic-v4')
         #stdscr = curses.initscr()
-        #curses.noecho()
-        #curses.cbreak()
-        try:
-            while (not done):
 
-                if(renderGame):  self.env.render()
+        try:
+            while (not done or ts > 30000):
+
+                if(renderGame):
+                    time.sleep(0.01)
+                    self.env.render()
 
                 if (len(observations) == 0):
                     #action = self.env.action_space.sample()
-                    action = 2
+                    action = 1
                 else:
-                    r = np.random.random()
                     outComes = np.array(a_genome.active(phenotype, state))
                     action = np.argmax(outComes) + 1
-                    action = np.random.randint(1, 4)
                     '''
                     if(r < outComes[0]):
                         action = 1
@@ -145,15 +219,12 @@ class population():
                          action = 3
                     '''
                     choices.append(action)
-                    #print(outComes, action)
-
                 # ram values
                 # 49 ball x position 32-CD
                 # 54 ball y position (player's was 26-cB)
                 # 56 ball y velocity -5 to 5
                 # 58 ball x velocity -5 to 5
                 # 60 player y 26-CB
-
                 observations, reward, done, info = self.env.step(action)
                 state = np.array([observations[i] for i in [49, 54, 56, 58, 60]], dtype='int32')
 
@@ -179,40 +250,39 @@ class population():
                 ts += 1
 
         finally: None
-            #curses.echo()
-            #curses.cbreak()
-            #curses.endwin()
-        #print(score)
-        digits = len(str(ts))
-        if(digits == 3):
-            digits = 4
+        digits = 5
 
         self.closeGame()
 
-        fitness = float(score + ts/(10**digits))
+        if(score > initial_score):
+            fitness = float(score + 1/(ts/100.0))
+        else:
+            fitness = float(score + ts/(10**digits))
         #print(fitness)
         #print(collections.Counter(choices))
         #print('Nothing-1:{%.3f}  Up-2:{%.3f}. Down-3: {%.3f}'.format(round(choices.count(1) / len(choices),3), round(choices.count(2) / len(choices),3),round(choices.count(3)/ len(choices),3)))
         return fitness
 
-    def evaluateGenomes(self):
+    def evaluateGenomes(self, numGames=1):
         highestFitness = 0
         lowestFitness = 100
         bestGenomeList = []
         best_genome = []
         oneInEach = []
-
         for a_species in self.SpeciesList:
             numGenomes =  len(a_species.genomeList)
             highestSpeciesFitness = 0
             worst_genome = None
             for each_genome in a_species.genomeList:
 
-                each_genome.fitness = self.getFitness(each_genome)
+                genomeFitness = []
+                for games in range(numGames):
+                    genomeFitness.append(self.getFitness(each_genome))
 
+                each_genome.fitness = np.average(genomeFitness)
                 shared_fitness = each_genome.fitness / numGenomes
                 a_species.totalAdjustedFitness += shared_fitness
-
+                #print('Species type: ', a_species.speciesType,  'genome id', each_genome.id, ' Genome Score: ', each_genome.fitness, '  score ', a_species.totalAdjustedFitness)
                 bestGenomeList.append(each_genome)
 
                 if (each_genome.fitness > highestSpeciesFitness):
@@ -233,62 +303,25 @@ class population():
 
         bestGenomeList.sort(key=lambda x: x.fitness, reverse=True)
 
-        if(len(bestGenomeList) > 10):
-            keepGenomes = bestGenomeList[0:10]
+        if(len(bestGenomeList) > 20):
+            keepGenomes = bestGenomeList[0:20]
         else:
             keepGenomes = bestGenomeList
         [keepGenomes.append(i) for i in oneInEach if i not in keepGenomes]
 
-
         return keepGenomes, highestFitness
 
-    def renderSomeGames(self, a_genome):
-        self.env.reset()
-        done = False
-        ts = 0.0
-        observations = []
-        score = 50
-        phenotype = a_genome.buildNet()
-
-        while (not done):
-            self.env.render()
-            ts += 1
-            if (len(observations) == 0):
-                action = self.env.action_space.sample()
-            else:
-                observations = list(observations[:80])
-                observations.extend(list(observations[-7:]))
-                r = np.random.random()
-                outComes = np.array(a_genome.activate(phenotype, observations))
-                action = np.argmax(outComes)
-
-                '''
-                r = np.random.random()
-                if (r < outComes[0]):
-                    action = 1
-                elif (r < (outComes[0] + outComes[1])):
-                    action = 2
-                else:
-                    action = 3
-                '''
-            observations, reward, done, info = self.env.step(action)
-            score += reward
-        #digits = len(str(ts))
-        #return float(score + ts/(10**digits))
-        self.closeGame()
-        return score, ts
-
-    def breedPopulation(self, nextGenomes, mutationRate=None, addNodeRate=None, addConnectionRate=None):
+    def breedPopulation(self, nextGenomes, mutationRate=None, addNodeRate=None, addConnectionRate=None, removeConnectionRate=None):
         if(mutationRate == None):
             mutationRate = self.mutateWeightRate
         if(addNodeRate == None):
             addNodeRate = self.mutateNodeRate
         if(addConnectionRate == None):
             addConnectionRate = self.mutateConnectionRate
+        if(removeConnectionRate == None):
+            removeConnectionRate = self.removeConnectionRate
 
         self.setAllowedOffspring(len(nextGenomes))
-
-        #while(len(nextGenomes) < self.populationSize):
 
         for a_species in self.SpeciesList:
             offspring = 0
@@ -307,61 +340,83 @@ class population():
                     else:
                         childGenome = self.crossGenomes(parent1, parent2, True)
                 offspring += 1
-                nextGenomes.append(childGenome)
 
-                print('\nParent: ')
-                print([(i.inNode, i.outNode) for i in parent1.ConnectionList])
-                print([(i.inNode, i.outNode) for i in parent2.ConnectionList])
-                print('\n CHild')
-                print([(i.inNode, i.outNode) for i in childGenome.ConnectionList])
+                if (np.random.random() < mutationRate):
+                    childGenome.mutateWeights()
+
+                if (np.random.random() < addNodeRate):
+                    self.InnovationList = childGenome.mutateAddNode(self.InnovationList)
+
+                if (np.random.random() < addConnectionRate):
+                    self.InnovationList = childGenome.mutateAddConnection(self.InnovationList)
+
+                if (np.random.random() < removeConnectionRate):
+                    self.InnovationList = childGenome.mutateAddConnection(self.InnovationList)
+
+                nextGenomes.append(childGenome)
 
         self.makeSpeciesMascot()
         self.reset()
 
         for a_genome in nextGenomes:
-
-            if(np.random.random() < mutationRate):
-                a_genome.mutateWeights()
-
-            if(np.random.random() < addNodeRate):
-                self.CurrentInnovationList, self.GlobalInnovation = a_genome.mutateAddNode(self.GlobalInnovation, self.CurrentInnovationList)
-
-            if(np.random.random() < addConnectionRate):
-                self.CurrentInnovationList, self.GlobalInnovation = a_genome.mutateAddConnection(self.GlobalInnovation, self.CurrentInnovationList)
-
             self.putSpecies(a_genome)
 
+    def reset(self):
+        count = 0
+        removed = []
+        for a_species in self.SpeciesList:
+            if(len(a_species.genomeList) == 0):
+                removed.append(a_species.speciesType)
+                self.SpeciesList.remove(a_species)
+                count += 1
+            a_species.totalAdjustedFitness = 0
+            a_species.genomeList = []
+
+        print(f'Removed {count} species. Species type removed: ', *removed)
+
+    def makeSpeciesMascot(self):
+        for a_species in self.SpeciesList:
+            if(len(a_species.genomeList) > 0):
+                a_species.mascot = a_species.genomeList[np.random.randint(0,len(a_species.genomeList))]
+
+    def splitNum(self, NumList):
+        the_sum = sum([i[0] for i in NumList])
+        floor_sum = sum(np.floor([i[0] for i in NumList]))
+        sorted_Num = deepcopy(sorted(NumList, key=lambda l:(l[0] - np.floor(l[0])), reverse=True))
+        count = 0
+        for a_Num in sorted_Num:
+            if(count < int(round(the_sum - floor_sum))):
+                a_Num[0] = int(np.ceil(a_Num[0]))
+            else:
+                a_Num[0] = int(np.floor(a_Num[0]))
+            count += 1
+
+        sorted_Num.sort(key=lambda l:l[1])
+        return sorted_Num
 
     def setAllowedOffspring(self, keepGenomes):
         remainingSize = self.populationSize -  keepGenomes
-        totalScore = 0
+        numAllowed = []
+
+        total_Score = sum([i.totalAdjustedFitness for i in self.SpeciesList])
+        if(total_Score == 0):
+            for a_species in self.SpeciesList:
+                a_species.totalAdjustedFitness = 29
+                total_Score = sum([i.totalAdjustedFitness for i in self.SpeciesList])
 
         for a_species in self.SpeciesList:
-            totalScore += a_species.totalAdjustedFitness
+            numAllowed.append([remainingSize * a_species.totalAdjustedFitness/total_Score, a_species.speciesType])
 
-        for a_species in self.SpeciesList:
-            a_species.allowedOffspring = int(round(remainingSize * a_species.totalAdjustedFitness/totalScore))
+        sorted_numAllowed = self.splitNum(numAllowed)
+        self.SpeciesList = sorted(self.SpeciesList, key = lambda l:l.speciesType)
 
-    ###NOT USED
+        #print([i.speciesType for i in self.SpeciesList])
+        #print(sorted_numAllowed)
 
-    def getBiasedSpecies(self, species2avoid=None):
-        totalWeight = 0
-        counter = 0
-        temp = deepcopy(self.SpeciesList)
+        for a_species, rank in zip(self.SpeciesList, sorted_numAllowed):
+            a_species.allowedOffspring = rank[0]
 
-        if species2avoid:
-            temp.remove(species2avoid)
-
-        for a_species in temp:
-            totalWeight += abs(a_species.totalAdjustedFitness)
-
-        threshold = np.random.random() * totalWeight
-        for a_species in temp:
-            counter += abs(a_species.totalAdjustedFitness)
-            if(counter >= threshold):
-                return a_species
-
-    ######
+            print('Species: ', a_species.speciesType, ' Allowed: ', a_species.allowedOffspring,  ' Species score: ', a_species.totalAdjustedFitness)
 
     def getBiasedGenome(self,someSpecies, genome2avoid=None):
         totalFitness = 0
@@ -383,20 +438,6 @@ class population():
             if(counter >= threshold):
                 return each_genome
 
-    def reset(self):
-        count = 0
-        removed = []
-        for a_species in self.SpeciesList:
-            a_species.totalAdjustedFitness = 0
-            a_species.genomeList = []
-
-            if(len(a_species.genomeList) == 0):
-                removed.append(a_species.speciesType)
-                self.SpeciesList.remove(a_species)
-                count += 1
-
-        print(f'Removed {count} species. Species type removed: ', *removed)
-
     def crossGenomes(self, genome1, genome2, equal=False):
         #Parent 1 is always more fit
         parent1 = deepcopy(genome1.ConnectionList)
@@ -416,11 +457,11 @@ class population():
             for connection2 in parent2:
                 if(connection1.innovation == connection2.innovation):
                     childConnectionList.append(connection1) if np.random.randint(0, 2) else childConnectionList.append(connection2)
-                    #try:
-                    tempParent2.remove(connection2)
-                    #except ValueError:
+                    try:
+                        tempParent2.remove(connection2)
+                    except ValueError:
                     #    None
-                        #print('Value already removed')
+                        print(f'Tried to remove innovation: {connection2.innovation} with connection {connection2.inNode} to {connection2.outNode} but not in list: {[(i.innovation, i.inNode, i.outNode) for i in tempParent2]}')
 
                     disjoint = False
                     break
@@ -449,29 +490,11 @@ class population():
 
         return childGenome
 
-    def closeGame(self):
-        self.env.close()
+    def renderGames(self, genomeList):
+         for i in genomeList:
+             score = self.getFitness(i, True)
 
-    def drawPop(self, gen=0):
-
-        for s in self.SpeciesList:
-            for g in s.genomeList:
-                drawnet = 'Gen_' + str(gen) + '/Species_' + str(g.id)
-                g.draw_net(filename=drawnet)
-
-    def printGenome(self, genome=None):
-
-        if(genome):
-            print('\nid ', genome.id, ' fitness ', genome.fitness)
-            print([(i.inNode, i.outNode) for i in genome.ConnectionList])
-            print([(i.id) for i in genome.NodeList],'\n')
-        else:
-            for s in self.SpeciesList:
-                for g in s.genomeList:
-                    print('id ',g.id, ' fitness ', g.fitness)
-                    print([(i.inNode, i.outNode, i.enabled) for i in g.ConnectionList])
-                    print([(i.id) for i in g.NodeList])
-
+             print(f'Species: {self.findSpecies(i)} Genome Id: {i.id} with score: {score}  ')
 
     def addInitialGenomes(self,size):
 
@@ -490,123 +513,58 @@ class population():
         NodeList.extend([newNode1,newNode2,newNode3,newNode4,newNode5, outputNode1, outputNode2, outputNode3])
 
         for i in range(2):
-            parent = genome([], NodeList,29,self.GenomeID)
             self.GenomeID += 1
+            parent = genome([], NodeList,29,self.GenomeID)
             for i in range(5):
-                #outputNode = np.random.randint(87, 91)
-                self.CurrentInnovationList, self.GlobalInnovation = parent.addConnection(i,5, self.GlobalInnovation, self.CurrentInnovationList)
-                self.CurrentInnovationList, self.GlobalInnovation = parent.addConnection(i,6, self.GlobalInnovation, self.CurrentInnovationList)
-                self.CurrentInnovationList, self.GlobalInnovation = parent.addConnection(i,7, self.GlobalInnovation, self.CurrentInnovationList)
-
+                self.InnovationList = parent.addConnection(i,5, self.InnovationList)
+                self.InnovationList = parent.addConnection(i,6, self.InnovationList)
+                self.InnovationList = parent.addConnection(i,7, self.InnovationList)
             self.putSpecies(parent)
             newGenomes.append(parent)
-
-        #print('Breed Pop')
-        self.printGenome()
+        self.breedPopulation(newGenomes, 0.7, 0.3, 0.3, 0.1)
 
 
-        self.breedPopulation(newGenomes, 0.2, 0.5, 0.8)
 
 if __name__ == '__main__':
-    Pop_size = 100
-    object_file = 'Pong_Population.obj'
-    gen_filename = 'genNum.txt'
-
-    if (os.path.isfile(object_file) and not os.stat(object_file).st_size == 0 ):
-        Pop = population(50,c1=0.5,c2=1,c3=0.6,delta=3.5,initial=False)
-        Pop_file = open(object_file,'rb')
-        Pop.SpeciesList = pickle.load(Pop_file)
-
-        if(os.path.isfile(gen_filename) and not os.stat(gen_filename).st_size == 0 ):
-            gen_file = open(gen_filename,'r')
-            a_string = (gen_file.read()).split(':'
-                                               '')
-            #print(a_string)
-            gen = int(a_string[0])
-            Pop.GlobalInnovation = int(a_string[1])
-            Pop.GlobalSpecies = int(a_string[2])
-            Pop.GenomeID = int(a_string[3])
-            Pop.CurrentInnovationList = (a_string[4])
-            '''
-            print(Pop.GlobalInnovation)
-            print(Pop.GlobalSpecies)
-            print(Pop.GenomeID)
-            print(Pop.CurrentInnovationList)
-            '''
-
-    else:
-        Pop = population(50, c1=0.5, c2=1, c3=0.6, delta=3.5, initial=True)
-        gen = 0
-
-    bestSpeciesinGen = []
-    highestScoreinGen = []
-    SpeciesinGen = []
+    renderNum = 5
+    Pop = population(100, c1=0.5, c2=0.5, c3=0.4, delta=3.0)
+    gen, initial = Pop.loadState()
+    if(initial):
+        Pop.addInitialGenomes(100)
 
     for i in range(1000):
-        bestGenomesList,  highest = Pop.evaluateGenomes()
+
+        print('\n\n\nEvaluating Genomes ############################################################################# \n')
+
+        bestGenomesList,  highest = Pop.evaluateGenomes(5)
         bestSpecies = Pop.findSpecies(bestGenomesList [0])
-        check_pop = sum([len(i.genomeList) for i in Pop.SpeciesList])
         TypesinGen = [i.speciesType for i in Pop.SpeciesList]
 
-        for each_genome in bestGenomesList:
-            print(f'Genome ID {each_genome.id} Fitness score: {each_genome.fitness} Species Type: {Pop.findSpecies(each_genome)}')
-        print(f'Gen: {gen + i}, Number of Species {len(Pop.SpeciesList)}, Types of Species: {Pop.GlobalSpecies} with Innovation: {Pop.GlobalInnovation}')
-        print('Current Species Type in Gen: ', *TypesinGen)
-        print(f'Best Species: {bestSpecies} Highest Fitness: {highest} Best Genome {bestGenomesList[0].id}')
+        for each_genome in bestGenomesList[:10]:
+            print(f'Genome ID {each_genome.id}    Score: {each_genome.fitness}    Species Type: {Pop.findSpecies(each_genome)}')
 
-        SpeciesinGen.append(Pop.SpeciesList)
+        print('\nBreeding New Pop ############################################################################# \n')
+
         Pop.breedPopulation(bestGenomesList)
-        #Pop.printGenome()
 
+        print('\nAfter Evalutations #############################################################################\n')
 
+        for s in Pop.SpeciesList:
+            print('Species Number: ', s.speciesType, ' Ammount: ', len(s.genomeList))
 
-        if(i%10 == 0):
+        print(f'\nGen: {gen + i}   Number of Species {len(Pop.SpeciesList)}    Types of Species: {Pop.GlobalSpecies}   Innovation: {max([i[0] for i in Pop.InnovationList])}')
+        print('Current Species Type in Gen: ', *TypesinGen)
+        print(f'Current best genome fitness:  {bestGenomesList[0].fitness}')
 
-            Pop.drawPop(gen + i)
-            file_Pop = open(object_file, 'wb')
-            gen_file = open(gen_filename, 'w')
-            pickle.dump(Pop.SpeciesList, file_Pop)
-            a_string = str(gen + i) + ':' + str(Pop.GlobalInnovation) + ':' + str(Pop.GlobalSpecies) + ':' + str(Pop.GenomeID) + ':' + str(Pop.CurrentInnovationList)
-            gen_file.write(a_string)
-            gen_file.close()
+        if(i%5 == 0):
 
-            if(len(bestGenomesList) > 10):
-                index = 10
+            if (len(bestGenomesList) > renderNum):
+                index = renderNum
             else:
                 index = len(bestGenomesList)
-            counter = 0
-            for i in bestGenomesList[0:index]:
-                drawnet = 'Species ' + str(counter)
-                #i.draw_net(filename=drawnet)
-                counter += 1
-                genome_score = Pop.getFitness(i, True)
-                print(f'Genome Number {counter} / {index} Score: {genome_score}  ID: {i.id} Species {Pop.findSpecies(i)}')
+
+            Pop.renderGames(bestGenomesList[:index])
+            Pop.saveState(gen + i)
+            Pop.drawPop(gen + i)
 
 
-'''
-
-Pop = population(5)
-the_species = Pop.findSpecies(Pop.SpeciesList[1].genomeList[0])
-
-'''
-
-#GlobalPop.addInitialGenomes()
-#childGenome = GlobalPop.crossGenomes(GlobalPop.SpeciesList[0].genome[0],GlobalPop.GenomeList[1], True)
-
-
-#Testing Crossover Function
-#print([[i.innovation, i.inNode, i.outNode, i.enabled] for i in childGenome.ConnectionList])
-
-#GlobalPop.CurrentInnovationList, GlobalPop.GlobalInnovation = GlobalPop.GenomeList[0].mutateAddConnection(GlobalPop.GlobalInnovation, GlobalPop.CurrentInnovationList)
-#GlobalPop.CurrentInnovationList, GlobalPop.GlobalInnovation = GlobalPop.GenomeList[0].mutateAddNode(GlobalPop.GlobalInnovation, GlobalPop.CurrentInnovationList)
-
-'''
-print("Genome 1 Connections")
-print([[i.innovation, i.inNode, i.outNode, i.enabled] for i in GlobalPop.SpeciesList[0].genomeList[0].ConnectionList])
-print('Genome 1 Nodes')
-print([[i.layer, i.id] for i in GlobalPop.SpeciesList[0].genomeList[0].NodeList])
-'''
-
-
-#GlobalPop.putSpecies(GlobalPop.GenomeList[0],GlobalPop.GenomeList[1])
-#print(f'excess {excess}, disjoint: {disjoint}, weights {weights}')

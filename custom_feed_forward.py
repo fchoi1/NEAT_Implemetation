@@ -30,7 +30,7 @@ class FeedForwardNetwork():
                 node_inputs.append(self.values[i] * w)
             s = self.sum_aggregation(node_inputs)
             if(node not in self.output_nodes):
-                self.values[node] = self.ReLu(s)
+                self.values[node] = self.sigmoid(s)
             else:
                 self.values[node] = s
 
@@ -105,6 +105,9 @@ class FeedForwardNetwork():
 
     def ReLu(self,x):
         return x * (x > 0)
+
+    def sigmoid(self,x):
+        return 1 / (1 + np.exp(-4.9 * x))
 
     def softmax(self, x):
         e_x = np.exp(x - np.max(x))

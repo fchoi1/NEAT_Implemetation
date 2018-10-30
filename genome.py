@@ -14,36 +14,38 @@ class genome():
         self.fitness = fitness
         self.id=id
 
-    def addConnection(self, in_node, out_node, innovationNumber=0,  currentInnovationList=[]):
-        innovationList = currentInnovationList.copy()
-        innovationNum = innovationNumber
+    def addConnection(self, in_node, out_node, currentInnovationList=[]):
+        innovationList = currentInnovationList
+        innovationNum = max([i[0] for i in innovationList], default=0)
         assignInnovation = 0
         pre_innovation = False
+
         w = np.random.uniform(-1,1)
 
         for innovationConnections in innovationList:
-            assignInnovation += 1
-            if (in_node == innovationConnections[0] and out_node == innovationConnections[1]):
+            if (in_node == innovationConnections[1] and out_node == innovationConnections[2]):
+                assignInnovation = innovationConnections[0]
                 pre_innovation = True
                 break
 
         if (not pre_innovation):
             innovationNum += 1
-            innovationList.append([in_node, out_node])
+            innovationList.append((innovationNum,in_node, out_node))
             assignInnovation = innovationNum
 
         newConnection = ConnectionGene(inNode=in_node, outNode=out_node, weight=w, enabled=True, innovation=assignInnovation)
         self.ConnectionList.append(newConnection)
 
-        return innovationList, innovationNum
+        return innovationList
 
-    def mutateAddConnection(self, innovationNumber=0, currentInnovationList=[]):
+    def mutateAddConnection(self, currentInnovationList=[]):
         n_1 = np.random.randint(0, len(self.NodeList))
         n_2 = np.random.randint(0, len(self.NodeList))
         w = np.random.uniform(-1,1)
 
-        innovationNum = innovationNumber
         innovationList = currentInnovationList
+        innovationNum = max([i[0] for i in innovationList], default=0)
+        assignInnovation = 0
 
         reversed = False
         pre_innovation = False
@@ -68,23 +70,25 @@ class genome():
             if (connection.inNode == n_1 and connection.outNode == n_2):
                 #print('Connection Exists')
                 #isConnection = True
-                return innovationList, innovationNum
+                return innovationList
 
         for innovationConnections in innovationList:
-            if(n_1 == innovationConnections[0] and n_2 == innovationConnections[1]):
+            if(n_1 == innovationConnections[1] and n_2 == innovationConnections[2]):
+                assignInnovation = innovationConnections[0]
                 pre_innovation = True
                 break
+
         if(not pre_innovation):
             innovationNum += 1
-            innovationList.append([n_1,n_2])
+            innovationList.append((innovationNum, n_1, n_2))
+            assignInnovation = innovationNum
 
-
-        newConnectionGene = ConnectionGene(inNode=n_1, outNode=n_2, weight=w, enabled=True, innovation=innovationNum)
+        newConnectionGene = ConnectionGene(inNode=n_1, outNode=n_2, weight=w, enabled=True, innovation=assignInnovation)
         self.ConnectionList.append(newConnectionGene)
         #print('Added Connection: ', n_1, ' ', n_2, ' to ID: ', self.id)
-        return innovationList, innovationNum
+        return innovationList
 
-    def mutateAddNode(self, innovationNumber=0, currentInnovationList=[]):
+    def mutateAddNode(self, currentInnovationList=[]):
 
         n = np.random.randint(0, len(self.ConnectionList))
         self.ConnectionList[n].disable()
@@ -94,8 +98,8 @@ class genome():
         out_Node = self.ConnectionList[n].outNode
         w = self.ConnectionList[n].weight
 
-        innovationNum = innovationNumber
         innovationList = currentInnovationList
+        innovationNum = max([i[0] for i in innovationList], default=0)
 
         newID = len(self.NodeList)
         newNode = NodeGene(type='HIDDEN',id=newID)
@@ -105,8 +109,8 @@ class genome():
         innovationNum += 1
         newConnectionGene2 = ConnectionGene(inNode=newID, outNode=out_Node, weight = w, enabled=True, innovation=innovationNum)
 
-        innovationList.append([in_Node, newID])
-        innovationList.append([newID, out_Node])
+        innovationList.append((innovationNum, in_Node, newID))
+        innovationList.append((innovationNum, newID, out_Node))
 
         self.NodeList.append(newNode)
         self.ConnectionList.append(newConnectionGene1)
@@ -117,15 +121,22 @@ class genome():
         #print('Added C1:', newConnectionGene1.inNode, newConnectionGene1.outNode, end=' ')
         #print('Added C2:', newConnectionGene2.inNode, newConnectionGene2.outNode)
 
-        return innovationList, innovationNum
+        return innovationList
 
     def mutateWeights(self):
         for connection in self.ConnectionList:
             r = np.random.random()
-            if(r <= 0.9):
-                connection.weight += connection.weight*np.random.normal(0,1)
-            elif(r <= 0.95):
+            if(r <= 0.75):
+                r2 = np.random.normal(0,0.5)
+                if(r2 > 1): r2 = 1
+                elif(r2 < -1): r2 = -1
+                connection.weight += r2
+            elif(r <= 0.8):
                 connection.weight = np.random.random()
+
+    def mutateRemoveNode(self):
+        n = np.random.randint(0, len(self.ConnectionList))
+        self.ConnectionList[n].disable()
 
     def seperateNodes(self):
 
@@ -201,8 +212,6 @@ class genome():
             node_attrs = {'style': 'filled', 'fillcolor': node_colors.get(k.id, 'lightblue')}
             dot.node(name, _attributes=node_attrs)
 
-
-
         if prune_unused:
             connections = set()
             #for cg in genome.connections.values():
@@ -233,6 +242,7 @@ class genome():
         #print('\nID', self.id)
         #print([(i.inNode, i.outNode) for i in self.ConnectionList])
         #print([(i.inNode, i.outNode) for i in self.ConnectionList if i.enabled])
+
         for cg in self.ConnectionList:
             if cg.enabled or show_disabled:
                 # if cg.input not in used_nodes or cg.output not in used_nodes:
@@ -251,8 +261,6 @@ class genome():
         dot.render(filename, view=view)
 
         return dot
-
-
 
 
 class ConnectionGene():

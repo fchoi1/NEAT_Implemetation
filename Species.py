@@ -1,7 +1,7 @@
 
 class Species():
 
-    def __init__(self,  specicestype, a_genome, mascot, totalAdjustedFitness=29, allowedOffspring = 0):
+    def __init__(self,  specicestype, a_genome, mascot, totalAdjustedFitness=0, allowedOffspring = 0):
         if(not isinstance(a_genome, list)):
             self.genomeList = [a_genome]
         else:

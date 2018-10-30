@@ -1,6 +1,10 @@
 from copy import deepcopy
 import numpy as np
 from genome import genome, ConnectionGene, NodeGene
+import time
+import gym
+import curses
+
 
 from multiprocessing import Process, Queue
 import os
@@ -196,7 +200,7 @@ this_1 = 5
 
 
 '''
-
+'''
 a = [1,2,3,4,5]
 b = [2,4,6]
 c = list(set(a + b))
@@ -356,3 +360,136 @@ print(child.fitness)
 copy.fitness =31
 
 print(child.fitness, copy.fitness)
+
+
+a = [(1,2,3), (4,5,6), (7,8,9)]
+
+a.append((10,11,12))
+
+for i in range(10):
+    print(np.random.normal(0,1))
+'''
+
+
+def some_games():
+
+    for episodes in range(10):
+        env = gym.make('Pong-2p-v0')
+        env.reset()
+        counter = 0
+        action = 0
+        state = []
+        t = 0
+        done = False
+
+        std = curses.initscr()
+        try:
+            while (not done):
+                t+=1
+                time.sleep(0.02)
+                env.render()
+
+                #action = env.action_space.sample()
+                # 0,1 - nothing 2,4 - up, 3,5 - down
+                if(len(state) == 0):
+
+                    action = 1
+                else:
+
+                    if(state[4] > state[1]):
+                        action = 2
+                    elif(state[4] < state[1]):
+                        action = 3
+                    else:
+                        action = 1
+
+                observations, reward, done, info = env.step(action)
+                if reward != 0:
+                    counter += reward
+
+                # 49 ball x position 32-CD
+                # 54 ball y position (player's was 26-cB)
+                # 56 ball y velocity -5 to 5
+                # 58 ball x velocity -5 to 5
+                # 60 player y 26-CB
+                state = np.array([observations[i] for i in [49, 54, 56, 58, 60]], dtype='int32')
+
+                if (state[2] > 5):
+                    state[2] = int(float(state[2]) - 256.0)
+                if (state[3] > 5):
+                    state[3] -= 256
+
+                for i in range(round(len(observations) / 16)):
+                    data = observations[i * 16:(i + 1) * 16]
+                    std.addstr(0, 0, "The Ram Data and Score: " + str(counter) + " Action: " + str(
+                        action))
+                    std.addstr(i + 1, 0, " ".join(str(data)))
+
+                std.addstr(11, 0, str(state))
+                std.addstr(12, 0, str(state[1]))
+                std.addstr(13, 0, str(state[4]))
+
+                std.refresh()
+
+        finally:
+            curses.endwin()
+
+
+        print(f"Got this much points: {counter} time: {t}")
+        #print("Finished after {} timesteps".format(t + 1))
+        env.close()
+
+
+
+
+some_games()
+'''
+def splitNum(percentages):
+    the_sum = sum([i[0] for i in percentages])
+    floor_sum = sum(np.floor([i[0] for i in percentages]))
+
+    print(round(the_sum))
+    print(floor_sum)
+    sorted_percentages = deepcopy(sorted(percentages, key=lambda l:(l[0] - np.floor(l[0])), reverse=True))
+    count = 0
+    print(percentages, ' \nsorted: ', sorted_percentages)
+    for a_percent in sorted_percentages:
+        if (count < int(round(the_sum - floor_sum))):
+            print(int(the_sum - floor_sum))
+            a_percent[0] = np.ceil(a_percent[0])
+        else:
+            a_percent[0] = np.floor(a_percent[0])
+        count += 1
+    sorted_percentages.sort(key=lambda l:l[1])
+    print(sorted_percentages)
+    return sorted_percentages
+
+
+list1 = [[2.2,1],[2.3,2],[2.4,3],[1.2,4],[2.6,5],[4.3,6]]
+
+print(list1)
+
+list3 = [[10/3,1],[10/3,2],[10/3,3]]
+list2 = splitNum(list1)
+list4 = splitNum(list3)
+
+
+
+print(list1)
+
+print(sum([i[0] for i in list1]))
+
+print(list2)
+
+print(sum([i[0] for i in list2]))
+
+print('\n\n')
+
+print(list3)
+
+print(sum([i[0] for i in list3]))
+
+print(list4)
+
+print(sum([i[0] for i in list4]))
+'''
