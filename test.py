@@ -6,7 +6,7 @@ import gym
 import curses
 
 
-from multiprocessing import Process, Queue
+from multiprocessing import Process, Queue, Pool
 import os
 import pickle
 import torch
@@ -200,7 +200,7 @@ this_1 = 5
 
 
 '''
-'''
+
 a = [1,2,3,4,5]
 b = [2,4,6]
 c = list(set(a + b))
@@ -235,7 +235,6 @@ for i in range(5):
     Con1.extend([newConnectionGene, newConnectionGene2, newConnectionGene3])
     Con2.extend([newConnectionGene, newConnectionGene2, newConnectionGene3])
     counter += 1
-
 
 hiddenConnection1 = ConnectionGene(inNode=0, outNode=8, weight=1, enabled=True, innovation=21)
 hiddenConnection2 = ConnectionGene(inNode=1, outNode=8, weight=2, enabled=True, innovation=22)
@@ -294,7 +293,7 @@ def crossGenomes(genome1, genome2, equal=False):
 
     for a_node in childNodeList:
         if ((a_node.id not in [i.inNode for i in childConnectionList]) and (a_node.id not in [i.outNode for i in childConnectionList])):
-            print('Removed node: ', a_node.id)
+            #print('Removed node: ', a_node.id)
             childNodeList.remove(a_node)
 
     childGenome = genome(childConnectionList, childNodeList, 29, 3)
@@ -308,7 +307,7 @@ child = crossGenomes(parent1,parent2,True)
 def mutateAddNode(child):
     n = np.random.randint(0, len(child.ConnectionList))
     child.ConnectionList[n].disable()
-    print('Disabled connection', (child.ConnectionList[n].inNode, child.ConnectionList[n].outNode), ' from ID ', child.id)
+   # print('Disabled connection', (child.ConnectionList[n].inNode, child.ConnectionList[n].outNode), ' from ID ', child.id)
 
     in_Node = child.ConnectionList[n].inNode
     out_Node = child.ConnectionList[n].outNode
@@ -325,15 +324,15 @@ def mutateAddNode(child):
     child.ConnectionList.append(newConnectionGene1)
     child.ConnectionList.append(newConnectionGene2)
 
-    print('ID: ', child.id, end=' ')
-    print('Added Node: ', newID, end=' ')
-    print('Added C1:', newConnectionGene1.inNode, newConnectionGene1.outNode, end=' ')
-    print('Added C2:', newConnectionGene2.inNode, newConnectionGene2.outNode)
+    #print('ID: ', child.id, end=' ')
+    #print('Added Node: ', newID, end=' ')
+    #print('Added C1:', newConnectionGene1.inNode, newConnectionGene1.outNode, end=' ')
+    #print('Added C2:', newConnectionGene2.inNode, newConnectionGene2.outNode)
 
     return child
 
 
-
+'''
 
 print('\nResults2')
 print('\nResults 1')
@@ -343,9 +342,9 @@ print([(i.inNode, i.outNode, i.enabled) for i in parent1.ConnectionList])
 print([(i.inNode, i.outNode, i.enabled) for i in parent2.ConnectionList])
 print('child')
 print([(i.inNode, i.outNode, i.enabled) for i in child.ConnectionList])
-
+'''
 child = mutateAddNode(child)
-
+'''
 print('\n\n\n')
 print('Parents')
 print([(i.inNode, i.outNode, i.enabled) for i in parent1.ConnectionList])
@@ -353,23 +352,18 @@ print([(i.inNode, i.outNode, i.enabled) for i in parent2.ConnectionList])
 print('child')
 print([(i.inNode, i.outNode, i.enabled) for i in child.ConnectionList])
 
-
+'''
 
 copy = deepcopy(child)
-print(child.fitness)
+#print(child.fitness)
 copy.fitness =31
 
-print(child.fitness, copy.fitness)
+#print(child.fitness, copy.fitness)
 
 
 a = [(1,2,3), (4,5,6), (7,8,9)]
 
 a.append((10,11,12))
-
-for i in range(10):
-    print(np.random.normal(0,1))
-'''
-
 
 def some_games():
 
@@ -438,11 +432,6 @@ def some_games():
         print(f"Got this much points: {counter} time: {t}")
         #print("Finished after {} timesteps".format(t + 1))
         env.close()
-
-
-
-
-some_games()
 '''
 def splitNum(percentages):
     the_sum = sum([i[0] for i in percentages])
@@ -493,3 +482,163 @@ print(list4)
 
 print(sum([i[0] for i in list4]))
 '''
+
+class test():
+
+    b_list = []
+
+    def __init__(self,id, a_list=[]):
+        self.id = id
+        self.a_list = a_list
+
+    def addaList(self, a):
+       self.a_list.append(a)
+
+    def addbList(self, a):
+       self.b_list.append(a)
+
+
+
+test1 = test(1,[5])
+test3 = test(2,[6])
+
+test1.addaList(3)
+test1.addbList(8)
+
+test3.addaList(4)
+test3.addbList(7)
+'''
+print(test1.a_list)
+print(test1.b_list)
+print(test3.a_list)
+print(test3.b_list)
+'''
+
+def getFitness(a_genome, q=None, renderGame=False):
+    initial_score = 50
+    done = False
+    ts = 0
+    observations = []
+    state = []
+    choices = []
+    score = initial_score
+    phenotype = a_genome.buildNet()
+
+    #env = gym.make('Pong-ram-v4')
+    env = gym.make('Pong-ramDeterministic-v4')
+
+    env.reset()
+    #self.make_env()
+    # stdscr = curses.initscr()
+
+    try:
+        while (not done or ts > 30000):
+
+            if (renderGame):
+                time.sleep(0.01)
+                env.render()
+
+            if (len(observations) == 0):
+                # action = self.env.action_space.sample()
+                action = 1
+            else:
+                outComes = np.array(a_genome.active(phenotype, state))
+                action = np.argmax(outComes) + 1
+                '''
+                if(r < outComes[0]):
+                    action = 1
+                elif(r < (outComes[0] + outComes [1])):
+                    action = 2
+                else:
+                     action = 3
+                '''
+                choices.append(action)
+            # ram values
+            # 49 ball x position 32-CD
+            # 54 ball y position (player's was 26-cB)
+            # 56 ball y velocity -5 to 5
+            # 58 ball x velocity -5 to 5
+            # 60 player y 26-CB
+            observations, reward, done, info = env.step(action)
+            state = np.array([observations[i] for i in [49, 54, 56, 58, 60]], dtype='int32')
+
+            if (state[2] > 5):
+                state[2] = int(float(state[2]) - 256.0)
+            if (state[3] > 5):
+                state[3] -= 256
+            '''
+            for i in range(round(len(observations)/16)):
+                data = observations[i*16:(i+1)*16]
+                stdscr.addstr(0,0,"The Ram Data and Score: " + str(score)  + " Action: " + str(action) + " Outcomes " + str(outComes))
+                stdscr.addstr(i+1,0, " ".join(str(data)) )
+
+            stdscr.addstr(11,0,str(state))
+            stdscr.addstr(12,0,str(state[3]))
+            stdscr.addstr(13,0,str(state[2]))
+
+            stdscr.refresh()
+            time.sleep(0.1)
+            '''
+            score += reward
+            # if (ts == 0): print(observations)
+            ts += 1
+
+    finally:
+        None
+    digits = 5
+    env.close()
+
+    if (score > initial_score):
+        fitness = float(score + 1 / (ts / 100.0))
+    else:
+        fitness = float(score + ts / (10 ** digits))
+    # print(fitness)
+    # print(collections.Counter(choices))
+    # print('Nothing-1:{%.3f}  Up-2:{%.3f}. Down-3: {%.3f}'.format(round(choices.count(1) / len(choices),3), round(choices.count(2) / len(choices),3),round(choices.count(3)/ len(choices),3)))
+    if(q):
+        q.put(fitness)
+    else:
+        return fitness
+
+if __name__ == '__main__':
+    num = 5
+    total = []
+
+    start_time_2 = time.time()
+    for i in range(num):
+        score2 = getFitness(parent1)
+        total.append(score2)
+    print(total)
+    score = np.average(total)
+    print(f'Time for no multi: {time.time() - start_time_2}, score: {score}')
+
+    total = []
+    '''
+    start_time_1 = time.time()
+    q = Queue()
+    for i in range(num):
+        p = Process(target=getFitness, args=(parent1,q))
+        p.start()
+        p.join()
+        score1 = q.get()
+        total.append(score1)
+        #p.join()
+    print(total)
+    score = np.average(total)
+    print(f'Time for multi: {time.time() - start_time_1}, score: {score}')
+    '''
+
+    for i in range(30):
+        total = []
+
+        start_time_1 = time.time()
+        p1 = [parent1]
+        p1 = p1 * num
+        p = Pool(processes=i+1)
+        p.close
+        data = p.map(getFitness, p1)
+        print(data)
+
+        score = np.average(data)
+        print(f'Time for pool: {time.time() - start_time_1}, score: {score}, number of processes: {i+1}')
+

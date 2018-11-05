@@ -1,4 +1,5 @@
 from genome import genome, ConnectionGene, NodeGene
+from multiprocessing import Pool
 from Species import Species
 from copy import deepcopy
 import gym
@@ -67,9 +68,6 @@ class population():
         os.makedirs(os.path.dirname(innovationFile), exist_ok=True)
         os.makedirs(os.path.dirname(generationFile), exist_ok=True)
         os.makedirs(os.path.dirname(PopulationFile), exist_ok=True)
-        # write_innovation = open(innovationFile, 'wb')
-        # write_generation = open(generationFile, 'w')
-        # write_population = open(PopulationFile, 'wb')
 
         with open(innovationFile, "wb") as writeInnovation, open(generationFile, "w") as writeGeneration, open(PopulationFile, 'wb') as writePopulation:
             pickle.dump(self.InnovationList, writeInnovation)
@@ -127,9 +125,7 @@ class population():
 
     def countGenes(self, genome1, genome2):
         excess = 0
-        disjoint = 0
         weights = 0
-        numGenes = 0
         innovation1 = []
         innovation2 = []
 
@@ -194,7 +190,7 @@ class population():
         choices = []
         score = initial_score
         phenotype = a_genome.buildNet()
-        self.make_env('Pong-ramDeterministic-v4')
+        self.make_env('Pong-ram-v4')
         #stdscr = curses.initscr()
 
         try:
@@ -237,11 +233,9 @@ class population():
                     data = observations[i*16:(i+1)*16]
                     stdscr.addstr(0,0,"The Ram Data and Score: " + str(score)  + " Action: " + str(action) + " Outcomes " + str(outComes))
                     stdscr.addstr(i+1,0, " ".join(str(data)) )
-
                 stdscr.addstr(11,0,str(state))
                 stdscr.addstr(12,0,str(state[3]))
                 stdscr.addstr(13,0,str(state[2]))
-
                 stdscr.refresh()
                 time.sleep(0.1)
                 '''
@@ -263,23 +257,76 @@ class population():
         #print('Nothing-1:{%.3f}  Up-2:{%.3f}. Down-3: {%.3f}'.format(round(choices.count(1) / len(choices),3), round(choices.count(2) / len(choices),3),round(choices.count(3)/ len(choices),3)))
         return fitness
 
-    def evaluateGenomes(self, numGames=1):
-        highestFitness = 0
+    def evaluateSpecies(self, a_species, numGames=1, highestFitness=0, oneInEach=[]):
         lowestFitness = 100
-        bestGenomeList = []
+        highestSpeciesFitness = 0
         best_genome = []
+
+        worst_genome = None
+        numGenomes = len(a_species.genomeList)
+
+        for each_genome in a_species.genomeList:
+
+            start_time = time.time()
+
+            genomeArray = [each_genome] * numGames
+            p = Pool(processes=10)
+            total = p.map(self.getFitness, genomeArray)
+            p.close()
+            each_genome.fitness = np.average([total])
+
+            finish_time = time.time()
+            print('Time for each genome: ', finish_time - start_time)
+
+            shared_fitness = each_genome.fitness / numGenomes
+            a_species.totalAdjustedFitness += shared_fitness
+            # print('Species type: ', a_species.speciesType,  'genome id', each_genome.id, ' Genome Score: ', each_genome.fitness, '  score ', a_species.totalAdjustedFitness)
+
+            if (each_genome.fitness > highestSpeciesFitness):
+                best_genome = each_genome
+                highestSpeciesFitness = each_genome.fitness
+
+            if (each_genome.fitness > highestFitness):
+                highestFitness = each_genome.fitness
+
+            if (each_genome.fitness < lowestFitness and len(a_species.genomeList) > 2):
+                lowestFitness = each_genome.fitness
+                worst_genome = each_genome
+
+        if (worst_genome):
+            a_species.genomeList.remove(worst_genome)
+
+        oneInEach.append(best_genome)
+
+        return oneInEach, highestFitness
+
+    def evaluate(self, numGames=1):
+        highestFitness = 0
         oneInEach = []
         for a_species in self.SpeciesList:
+            oneInEach, highestFitness =  self.evaluateSpecies(a_species,numGames, highestFitness, oneInEach)
+            '''
             numGenomes =  len(a_species.genomeList)
             highestSpeciesFitness = 0
             worst_genome = None
             for each_genome in a_species.genomeList:
 
                 genomeFitness = []
+                start_time = time.time()
+                genomeArray = [each_genome] * numGames
+                p = Pool(processes=10)
+                total = p.map(self.getFitness, genomeArray)
+                p.close()
+                each_genome.fitness = np.average([total])
+                finish_time = time.time()
+                print('Time for each genome: ', finish_time-start_time)
+
+                
                 for games in range(numGames):
                     genomeFitness.append(self.getFitness(each_genome))
-
                 each_genome.fitness = np.average(genomeFitness)
+                
+
                 shared_fitness = each_genome.fitness / numGenomes
                 a_species.totalAdjustedFitness += shared_fitness
                 #print('Species type: ', a_species.speciesType,  'genome id', each_genome.id, ' Genome Score: ', each_genome.fitness, '  score ', a_species.totalAdjustedFitness)
@@ -300,7 +347,8 @@ class population():
                 a_species.genomeList.remove(worst_genome)
 
             oneInEach.append(best_genome)
-
+            '''
+        bestGenomeList = [each_genome for a_species in self.SpeciesList for each_genome in a_species.genomeList]
         bestGenomeList.sort(key=lambda x: x.fitness, reverse=True)
 
         if(len(bestGenomeList) > 20):
@@ -536,7 +584,7 @@ if __name__ == '__main__':
 
         print('\n\n\nEvaluating Genomes ############################################################################# \n')
 
-        bestGenomesList,  highest = Pop.evaluateGenomes(5)
+        bestGenomesList,  highest = Pop.evaluate(5)
         bestSpecies = Pop.findSpecies(bestGenomesList [0])
         TypesinGen = [i.speciesType for i in Pop.SpeciesList]
 
